@@ -29,9 +29,9 @@ string ([^\\\"]|\\.)*
 
 "/*"[^\n]*"*/" { printf("%-8s \t %s\n", yytext, "C Comment"); comment_num++; }
 
-"/*"[^\n"*/"]* { printf("%-8s \t %s\n", yytext, "C Comment"); comment_num++; BEGIN(c_comment); }
-<c_comment>[^\n]*"*/" { printf("%-8s \t %s\n", yytext, "C Comment"); comment_num++; BEGIN(0); }
-<c_comment>[^\n]* { printf("%-8s \t %s\n", yytext, "C Comment"); comment_num++; }
+"/*"[^\n"*/"]* { printf("%s \t %s\n", yytext, "C Comment"); comment_num++; BEGIN(c_comment); }
+<c_comment>[^\n]*"*/" { printf("%s \t %s\n", yytext, "C Comment"); comment_num++; BEGIN(0); }
+<c_comment>[^\n]* { printf("%s \t %s\n", yytext, "C Comment"); comment_num++; }
 <c_comment>\n  { line_num++; }
 
 "+"         { printf("%-8s \t %s\n", yytext, "ADD"); }
