@@ -20,7 +20,7 @@ digit [0-9]
 id {letter}+({letter}|{digit})*
 inumber {digit}+
 fnumber ({digit}*\.{digit}+)
-string {(.)+}
+string ([^\\\"]|\\.)*
 
 /* Rules section */
 %%
@@ -71,7 +71,7 @@ string {(.)+}
 ","         { printf("%-8s \t %s\n", yytext, "COMMA"); }
 
 "\""        { printf("%-8s \t %s\n", yytext, "QUOTA"); BEGIN(str); }
-<str>[^\"]* { printf("%-8s \t %s\n", yytext, "STRING_LIT"); }
+<str>{string} { printf("%-8s \t %s\n", yytext, "STRING_LIT"); }
 <str>"\""   { printf("%-8s \t %s\n", yytext, "QUOTA"); BEGIN(0);}
 
 "print"     { printf("%-8s \t %s\n", yytext, "PRINT"); }
