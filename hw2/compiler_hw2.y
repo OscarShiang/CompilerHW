@@ -38,17 +38,6 @@
 	int address;
     } symbol_t;
 
-    typedef struct {
-	int type;
-	int kind;
-	char *name;
-	union {
-	    int i_val;
-	    float f_val;
-	    char *s_val;
-	};
-    } token_t;
-
     static int curr_scope = 0;
     static int address = 0;
 
