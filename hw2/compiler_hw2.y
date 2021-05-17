@@ -129,23 +129,23 @@ Type
 Literal
     : INT_LIT {
         printf("INT_LIT %d\n", $<i_val>$);
-	$$ = _INT;
+	    $$ = _INT;
     }
     | FLOAT_LIT {
         printf("FLOAT_LIT %f\n", $<f_val>$);
-	$$ = _FLOAT;
+	    $$ = _FLOAT;
     }
     | STRING_LIT {
         printf("STRING_LIT %s\n", $<s_val>$);
-	$$ = _STRING;
+	    $$ = _STRING;
     }
     | TRUE {
         printf("TRUE\n");
-	$$ = _BOOL;
+	    $$ = _BOOL;
     }
     | FALSE {
         printf("FALSE\n");
-	$$ = _BOOL;
+	    $$ = _BOOL;
     }
 ;
 
@@ -160,32 +160,32 @@ Statement
 
 DeclarationStmt
     : Type IDENT {
-	if (!lookup_symbol($2)) {
-	    // printf("find declaration id = %s, type = %s\n", $2, $1);
-	    insert_symbol($2, _VAR, $1, _UNDIFINED, yylineno);
-	} else {
-	    // TODO: raise syntax error
-	}
-	$$ = $1;
+        if (!lookup_symbol($2)) {
+            // printf("find declaration id = %s, type = %s\n", $2, $1);
+            insert_symbol($2, _VAR, $1, _UNDIFINED, yylineno);
+        } else {
+            // TODO: raise syntax error
+        }
+	    $$ = $1;
     }
     | Type IDENT ASSIGN ExpressionStmt {
-	if ($1 != $4) {
-	    // TODO: type conflict
-	} else if (!lookup_symbol($2)) {
-	    // TODO: duplicated var 
-	} else {
-	    insert_symbol($2, _VAR, $1, _UNDIFINED, yylineno);
-	}
-	$$ = $1;
+        if ($1 != $4) {
+            // TODO: type conflict
+        } else if (!lookup_symbol($2)) {
+            // TODO: duplicated var 
+        } else {
+            insert_symbol($2, _VAR, $1, _UNDIFINED, yylineno);
+        }
+	    $$ = $1;
     }
     | DeclarationStmt COMMA IDENT {
-	if (!lookup_symbol($3)) {
-	    // printf("find declaration id = %s, type = %s\n", $2, $1);
-	    insert_symbol($3, _VAR, $1, _UNDIFINED, yylineno);
-	} else {
-	    // TODO: raise syntax error
-	}
-	$$ = $1;
+        if (!lookup_symbol($3)) {
+            // printf("find declaration id = %s, type = %s\n", $2, $1);
+            insert_symbol($3, _VAR, $1, _UNDIFINED, yylineno);
+        } else {
+            // TODO: raise syntax error
+        }
+	    $$ = $1;
     }
 ;
 
@@ -196,77 +196,77 @@ ExpressionStmt
 ArithmeticStmt
     : LPAREN ArithmeticStmt RPAREN { $$ = $2; }
     | NOT ArithmeticStmt { 
-	printf("NOT\n");
-	$$ = _BOOL;
+        printf("NOT\n");
+        $$ = _BOOL;
     }
     | ArithmeticStmt AND ArithmeticStmt {
-	printf("AND\n");
-	$$ = _BOOL;
+        printf("AND\n");
+        $$ = _BOOL;
     }
     | ArithmeticStmt OR ArithmeticStmt { 
-	printf("OR\n");
-	$$ = _BOOL;
+        printf("OR\n");
+        $$ = _BOOL;
     }
     | ArithmeticStmt ADD ArithmeticStmt { 
-	printf("ADD\n");
-	$$ = MAX($1, $3);
+        printf("ADD\n");
+        $$ = MAX($1, $3);
     }
     | ArithmeticStmt SUB ArithmeticStmt { 
-	printf("SUB\n");
-	$$ = MAX($1, $3);
+        printf("SUB\n");
+        $$ = MAX($1, $3);
     }
     | ArithmeticStmt MUL ArithmeticStmt { 
-	printf("MUL\n");
-	$$ = MAX($1, $3);
+        printf("MUL\n");
+        $$ = MAX($1, $3);
     }
     | ArithmeticStmt QUO ArithmeticStmt { 
-	printf("QUO\n");
-	$$ = MAX($1, $3);
+        printf("QUO\n");
+        $$ = MAX($1, $3);
     }
     | ArithmeticStmt REM ArithmeticStmt { 
-	printf("REM\n");
-	$$ = MAX($1, $3);
+        printf("REM\n");
+        $$ = MAX($1, $3);
     }
     | INC ArithmeticStmt { 
-	printf("INC\n");
-	$$ = $2;
+        printf("INC\n");
+        $$ = $2;
     }
     | DEC ArithmeticStmt { 
-	printf("DEC\n");
-	$$ = $2;
+        printf("DEC\n");
+        $$ = $2;
     }
     | ArithmeticStmt INC { 
-	printf("INC\n");
-	$$ = $1;
+        printf("INC\n");
+        $$ = $1;
     }
     | ArithmeticStmt DEC { 
-	printf("DEC\n");
-	$$ = $1;
+        printf("DEC\n");
+        $$ = $1;
     }
     | ArithmeticStmt Comparator ArithmeticStmt %prec ADD {
-	printf("%s\n", $2);
-	$$ = _BOOL;
+        printf("%s\n", $2);
+        $$ = _BOOL;
     }
     | ADD ArithmeticStmt %prec MUL { 
-	printf("POS\n");
-	$$ = $2;
+        printf("POS\n");
+        $$ = $2;
     }
     | SUB ArithmeticStmt %prec MUL { 
-	printf("NEG\n");
-	$$ = $2;
+        printf("NEG\n");
+        $$ = $2;
     }
     | Value
 ;
 
 Value
     : IDENT {
-	symbol_t *curr = lookup_symbol($1);
-	// printf("address of %s = %d\n", $1, addr);
-	if (curr) 
-	    printf("IDENT (name=%s, address=%d)\n", $1, curr->address);
-	else 
-	    printf("error:%d: undefined: %s\n", yylineno,$1);
-	$$ = curr->type;
+        symbol_t *curr = lookup_symbol($1);
+        // printf("address of %s = %d\n", $1, addr);
+        if (curr) 
+            printf("IDENT (name=%s, address=%d)\n", $1, curr->address);
+        else 
+            printf("error:%d: undefined: %s\n", yylineno,$1);
+        $$ = curr->type;
     }
     | Literal
 ;
@@ -308,7 +308,7 @@ Comparator
 
 PrintStmt
     : PRINT LPAREN ExpressionStmt RPAREN SEMICOLON { 
-	printf("PRINT %s\n", get_type_name($3));
+	    printf("PRINT %s\n", get_type_name($3));
     }
 ;
 
@@ -317,25 +317,25 @@ PrintStmt
 static void create_symbol() 
 {
     for (int i = 0; i < MAX_SCOPE; i++) {
-	symbol_num[i] = 0;
-	for (int j = 0; j < MAX_SYMBOL; j++) {
-	    symbol_table[i][j].name = NULL;
-	    symbol_table[i][j].type = _UNDIFINED;
-	    symbol_table[i][j].eletype = _UNDIFINED;
-	    symbol_table[i][j].lineno = -1;
-	}
+        symbol_num[i] = 0;
+        for (int j = 0; j < MAX_SYMBOL; j++) {
+            symbol_table[i][j].name = NULL;
+            symbol_table[i][j].type = _UNDIFINED;
+            symbol_table[i][j].eletype = _UNDIFINED;
+            symbol_table[i][j].lineno = -1;
+        }
     }
 }
 
 static void insert_symbol(char *name, kind_t kind, type_t type, type_t eletype, int lineno)
 {
     symbol_t new_symbol = {
-	.name = name,
-	.kind = kind,
-	.type = type,
-	.eletype = eletype,
-	.lineno = lineno,
-	.address = address++,
+        .name = name,
+        .kind = kind,
+        .type = type,
+        .eletype = eletype,
+        .lineno = lineno,
+        .address = address++,
     };
     symbol_table[curr_scope][symbol_num[curr_scope]++] = new_symbol;
     printf("> Insert {%s} into symbol table (scope level: %d)\n", name, curr_scope);
@@ -344,10 +344,10 @@ static void insert_symbol(char *name, kind_t kind, type_t type, type_t eletype, 
 static symbol_t *lookup_symbol(char *name) 
 {
     for (int i = 0; i <= curr_scope; i++) {
-	for (int j = 0; j < symbol_num[curr_scope]; j++) {
-	    if (!strcmp(symbol_table[i][j].name, name)) 
-		return &symbol_table[i][j];
-	}
+        for (int j = 0; j < symbol_num[curr_scope]; j++) {
+            if (!strcmp(symbol_table[i][j].name, name)) 
+            return &symbol_table[i][j];
+        }
     }
     return NULL;
 }
@@ -358,12 +358,12 @@ static void dump_symbol()
     printf("%-10s%-10s%-10s%-10s%-10s%s\n", "Index", "Name", "Type", "Address", "Lineno",
 	"Element type");
     for (int i = 0; i < symbol_num[curr_scope]; i++) {
-	symbol_t *curr = &symbol_table[curr_scope][i];
-	printf("%-10d%-10s%-10s%-10d%-10d%s\n",
-	    i, curr->name,
-	    get_type_name(curr->type),
-	    curr->address, curr->lineno,
-	    get_type_name(curr->eletype));
+        symbol_t *curr = &symbol_table[curr_scope][i];
+        printf("%-10d%-10s%-10s%-10d%-10d%s\n",
+            i, curr->name,
+            get_type_name(curr->type),
+            curr->address, curr->lineno,
+            get_type_name(curr->eletype));
     }
 }
 
@@ -371,28 +371,28 @@ static char *get_type_name(type_t type)
 {
     switch (type) {
     case _INT:
-	return "int";
+	    return "int";
     case _FLOAT:
-	return "float";
+	    return "float";
     case _STRING:
-	return "string";
+	    return "string";
     case _BOOL:
-	return "bool";
+	    return "bool";
     default:
-	return "-";
+	    return "-";
     }
 }
 
 static type_t get_type_from_name(char *name) 
 {
     if (!strcmp(name, "int")) 
-	return _INT;
+	    return _INT;
     else if (!strcmp(name, "float"))
-	return _FLOAT;
+	    return _FLOAT;
     else if (!strcmp(name, "bool"))
-	return _BOOL;
+	    return _BOOL;
     else if (!strcmp(name, "string"))
-	return _STRING;
+	    return _STRING;
     return _UNDIFINED;
 }
 
