@@ -30,15 +30,16 @@
     } kind_t;
 
     typedef struct {
-	char *name;
-	kind_t kind;
-	type_t type;
-	type_t eletype;
-	int lineno;
-	int address;
+        char *name;
+        kind_t kind;
+        type_t type;
+        type_t eletype;
+        int lineno;
+        int address;
+        int scope;
     } symbol_t;
 
-    static int curr_scope = 0;
+    int curr_scope = 0;
     static int address = 0;
 
     static symbol_t symbol_table[MAX_SCOPE][MAX_SYMBOL];
@@ -50,7 +51,7 @@
     static void create_symbol();
     static void insert_symbol(char *name, kind_t kind, type_t type, type_t eletype, int lineno);
     static symbol_t *lookup_symbol(char *name);
-    static void dump_symbol();
+    static void dump_symbol(int level);
 %}
 
 %error-verbose
@@ -160,7 +161,8 @@ Statement
 
 DeclarationStmt
     : Type IDENT {
-        if (!lookup_symbol($2)) {
+        symbol_t *curr = lookup_symbol($2);
+        if (!curr || curr->scope != curr_scope) {
             // printf("find declaration id = %s, type = %s\n", $2, $1);
             insert_symbol($2, _VAR, $1, _UNDIFINED, yylineno);
         } else {
@@ -169,9 +171,11 @@ DeclarationStmt
 	    $$ = $1;
     }
     | Type IDENT ASSIGN ExpressionStmt {
+        symbol_t *curr = lookup_symbol($2);
+        // printf("find declaration id = %s, type = %s\n", $2, $1);
         if ($1 != $4) {
             // TODO: type conflict
-        } else if (!lookup_symbol($2)) {
+        } else if (curr && curr->scope == curr_scope) {
             // TODO: duplicated var 
         } else {
             insert_symbol($2, _VAR, $1, _UNDIFINED, yylineno);
@@ -179,7 +183,8 @@ DeclarationStmt
 	    $$ = $1;
     }
     | DeclarationStmt COMMA IDENT {
-        if (!lookup_symbol($3)) {
+        symbol_t *curr = lookup_symbol($3);
+        if (!curr || curr->scope != curr_scope) {
             // printf("find declaration id = %s, type = %s\n", $2, $1);
             insert_symbol($3, _VAR, $1, _UNDIFINED, yylineno);
         } else {
@@ -272,7 +277,10 @@ Value
 ;
 
 Block
-    : LBRACE StatementList RBRACE
+    : LBRACE StatementList RBRACE {
+        dump_symbol(curr_scope + 1);
+        symbol_num[curr_scope + 1] = 0;
+    }
 ;
 
 IfStmt
@@ -323,6 +331,7 @@ static void create_symbol()
             symbol_table[i][j].type = _UNDIFINED;
             symbol_table[i][j].eletype = _UNDIFINED;
             symbol_table[i][j].lineno = -1;
+            symbol_table[i][j].scope = -1;
         }
     }
 }
@@ -335,6 +344,7 @@ static void insert_symbol(char *name, kind_t kind, type_t type, type_t eletype, 
         .type = type,
         .eletype = eletype,
         .lineno = lineno,
+        .scope = curr_scope,
         .address = address++,
     };
     symbol_table[curr_scope][symbol_num[curr_scope]++] = new_symbol;
@@ -344,21 +354,21 @@ static void insert_symbol(char *name, kind_t kind, type_t type, type_t eletype, 
 static symbol_t *lookup_symbol(char *name) 
 {
     for (int i = 0; i <= curr_scope; i++) {
-        for (int j = 0; j < symbol_num[curr_scope]; j++) {
+        for (int j = 0; j < symbol_num[i]; j++) {
             if (!strcmp(symbol_table[i][j].name, name)) 
-            return &symbol_table[i][j];
+                return &symbol_table[i][j];
         }
     }
     return NULL;
 }
 
-static void dump_symbol() 
+static void dump_symbol(int level) 
 {
-    printf("> Dump symbol table (scope level: %d)\n", curr_scope);
+    printf("> Dump symbol table (scope level: %d)\n", level);
     printf("%-10s%-10s%-10s%-10s%-10s%s\n", "Index", "Name", "Type", "Address", "Lineno",
 	"Element type");
-    for (int i = 0; i < symbol_num[curr_scope]; i++) {
-        symbol_t *curr = &symbol_table[curr_scope][i];
+    for (int i = 0; i < symbol_num[level]; i++) {
+        symbol_t *curr = &symbol_table[level][i];
         printf("%-10d%-10s%-10s%-10d%-10d%s\n",
             i, curr->name,
             get_type_name(curr->type),
@@ -409,7 +419,7 @@ int main(int argc, char *argv[])
 
     yyparse();
 
-    dump_symbol();
+    dump_symbol(0);
     printf("Total lines: %d\n", yylineno);
     fclose(yyin);
     return 0;
