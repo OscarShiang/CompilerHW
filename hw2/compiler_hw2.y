@@ -4,8 +4,13 @@
     // #define YYDEBUG 1
     // int yydebug = 1;
 
+    /* Maximal number of symbol entries */
     #define MAX_SCOPE 25
     #define MAX_SYMBOL 100
+
+    /* Useful tools */
+    #define MAX(a, b) ((a) > (b) ? (a) : (b))
+    #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
     extern int yylineno;
     extern int yylex();
@@ -17,11 +22,11 @@
     }
 
     typedef enum {
-	_INT, _FLOAT, _STRING, _BOOL, _UNDIFINED = -1
+	_INT, _FLOAT, _BOOL, _STRING, _UNDIFINED = -1
     } type_t;
 
     typedef enum {
-	_FUNC, _VAR
+	_FUNC, _VAR, _LIT
     } kind_t;
 
     typedef struct {
@@ -32,6 +37,17 @@
 	int lineno;
 	int address;
     } symbol_t;
+
+    typedef struct {
+	int type;
+	int kind;
+	char *name;
+	union {
+	    int i_val;
+	    float f_val;
+	    char *s_val;
+	};
+    } token_t;
 
     static int curr_scope = 0;
     static int address = 0;
@@ -44,7 +60,7 @@
     /* Symbol table function - you can add new function if needed. */
     static void create_symbol();
     static void insert_symbol(char *name, kind_t kind, type_t type, type_t eletype, int lineno);
-    static int lookup_symbol(char *name);
+    static symbol_t *lookup_symbol(char *name);
     static void dump_symbol();
 %}
 
@@ -57,7 +73,7 @@
     int i_val;
     float f_val;
     char *s_val;
-    /* ... */
+    int st_type;
 }
 
 /* Token without return */
@@ -66,11 +82,6 @@
 
 %token INT FLOAT BOOL STRING VOID
 
-%token AND OR NOT
-%token ADD SUB MUL QUO REM INC DEC
-%token ADD_ASSIGN SUB_ASSIGN MUL_ASSIGN QUO_ASSIGN REM_ASSIGN
-%token GTR LSS GEQ LEQ EQL NEQ
-
 %token LPAREN RPAREN LBRACE RBRACE
 %token LBRACK RBRACK
 
@@ -78,16 +89,31 @@
 
 %token BREAK CONTINUE RETURN
 
+%right AND OR
+%right NOT
+%left GTR LSS GEQ LEQ EQL NEQ
+
+%left ADD_ASSIGN SUB_ASSIGN MUL_ASSIGN QUO_ASSIGN REM_ASSIGN
+%left INC DEC
+%left ADD SUB
+%left MUL QUO REM
+
 /* Token with return, which need to sepcify type */
-%token <i_val> INT_LIT
-%token <f_val> FLOAT_LIT
-%token <s_val> STRING_LIT
+%token <st_type> INT_LIT
+%token <st_type> FLOAT_LIT
+%token <st_type> STRING_LIT
 
 %token <s_val> IDENT
 
 /* Nonterminal with return, which need to sepcify type */
-%type <s_val> TypeName 
-%type <s_val> DeclarationStmt
+%type <s_val> Comparator
+%type <st_type> Type
+%type <st_type> DeclarationStmt
+
+%type <st_type> Literal
+%type <st_type> Value
+%type <st_type> ExpressionStmt 
+%type <st_type> ArithmeticStmt
 
 /* Yacc will start at this nonterminal */
 %start Program
@@ -105,10 +131,6 @@ StatementList
 ;
 
 Type
-    : TypeName
-;
-
-TypeName
     : INT { $$ = _INT; }
     | FLOAT { $$ = _FLOAT; }
     | STRING { $$ = _STRING; }
@@ -118,24 +140,29 @@ TypeName
 Literal
     : INT_LIT {
         printf("INT_LIT %d\n", $<i_val>$);
+	$$ = _INT;
     }
     | FLOAT_LIT {
         printf("FLOAT_LIT %f\n", $<f_val>$);
+	$$ = _FLOAT;
     }
     | STRING_LIT {
         printf("STRING_LIT %s\n", $<s_val>$);
+	$$ = _STRING;
     }
     | TRUE {
-        printf("BOOL_LIT %d\n", $<i_val>$);
+        printf("TRUE\n");
+	$$ = _BOOL;
     }
     | FALSE {
-        printf("BOOL_LIT %d\n", $<i_val>$);
+        printf("FALSE\n");
+	$$ = _BOOL;
     }
 ;
 
 Statement
     : DeclarationStmt SEMICOLON
-    | ExpressionStmt
+    | ExpressionStmt SEMICOLON
     | Block
     | IfStmt
     | LoopStmt
@@ -143,43 +170,114 @@ Statement
 ;
 
 DeclarationStmt
-    : TypeName IDENT {
-	if (lookup_symbol($2) == -1) {
+    : Type IDENT {
+	if (!lookup_symbol($2)) {
 	    // printf("find declaration id = %s, type = %s\n", $2, $1);
 	    insert_symbol($2, _VAR, $1, _UNDIFINED, yylineno);
 	} else {
 	    // TODO: raise syntax error
 	}
+	$$ = $1;
     }
-    | TypeName IDENT ASSIGN ExpressionStmt
-    | DeclarationStmt COMMA IDENT
+    | Type IDENT ASSIGN ExpressionStmt {
+	if ($1 != $4) {
+	    // TODO: type conflict
+	} else if (!lookup_symbol($2)) {
+	    // TODO: duplicated var 
+	} else {
+	    insert_symbol($2, _VAR, $1, _UNDIFINED, yylineno);
+	}
+	$$ = $1;
+    }
+    | DeclarationStmt COMMA IDENT {
+	if (!lookup_symbol($3)) {
+	    // printf("find declaration id = %s, type = %s\n", $2, $1);
+	    insert_symbol($3, _VAR, $1, _UNDIFINED, yylineno);
+	} else {
+	    // TODO: raise syntax error
+	}
+	$$ = $1;
+    }
 ;
 
 ExpressionStmt
-    : ArithmeticStmt SEMICOLON
+    : ArithmeticStmt
 ;
 
 ArithmeticStmt
-    : ArithmeticStmt ADD ArithmeticStmt { printf("ADD\n"); }
-    | ArithmeticStmt SUB ArithmeticStmt { printf("SUB\n"); }
-    | ArithmeticStmt MUL ArithmeticStmt { printf("MUL\n"); }
-    | ArithmeticStmt QUO ArithmeticStmt { printf("QUO\n"); }
-    | ArithmeticStmt REM ArithmeticStmt { printf("REM\n"); }
-    | INC ArithmeticStmt { printf("INC\n"); }
-    | DEC ArithmeticStmt { printf("DEC\n"); }
-    | ArithmeticStmt INC { printf("INC\n"); }
-    | ArithmeticStmt DEC { printf("DEC\n"); }
+    : LPAREN ArithmeticStmt RPAREN { $$ = $2; }
+    | NOT ArithmeticStmt { 
+	printf("NOT\n");
+	$$ = _BOOL;
+    }
+    | ArithmeticStmt AND ArithmeticStmt {
+	printf("AND\n");
+	$$ = _BOOL;
+    }
+    | ArithmeticStmt OR ArithmeticStmt { 
+	printf("OR\n");
+	$$ = _BOOL;
+    }
+    | ArithmeticStmt ADD ArithmeticStmt { 
+	printf("ADD\n");
+	$$ = MAX($1, $3);
+    }
+    | ArithmeticStmt SUB ArithmeticStmt { 
+	printf("SUB\n");
+	$$ = MAX($1, $3);
+    }
+    | ArithmeticStmt MUL ArithmeticStmt { 
+	printf("MUL\n");
+	$$ = MAX($1, $3);
+    }
+    | ArithmeticStmt QUO ArithmeticStmt { 
+	printf("QUO\n");
+	$$ = MAX($1, $3);
+    }
+    | ArithmeticStmt REM ArithmeticStmt { 
+	printf("REM\n");
+	$$ = MAX($1, $3);
+    }
+    | INC ArithmeticStmt { 
+	printf("INC\n");
+	$$ = $2;
+    }
+    | DEC ArithmeticStmt { 
+	printf("DEC\n");
+	$$ = $2;
+    }
+    | ArithmeticStmt INC { 
+	printf("INC\n");
+	$$ = $1;
+    }
+    | ArithmeticStmt DEC { 
+	printf("DEC\n");
+	$$ = $1;
+    }
+    | ArithmeticStmt Comparator ArithmeticStmt %prec ADD {
+	printf("%s\n", $2);
+	$$ = _BOOL;
+    }
+    | ADD ArithmeticStmt %prec MUL { 
+	printf("POS\n");
+	$$ = $2;
+    }
+    | SUB ArithmeticStmt %prec MUL { 
+	printf("NEG\n");
+	$$ = $2;
+    }
     | Value
 ;
 
 Value
     : IDENT {
-	int addr = lookup_symbol($1);
+	symbol_t *curr = lookup_symbol($1);
 	// printf("address of %s = %d\n", $1, addr);
-	if (addr != -1) 
-	    printf("IDENT (name=%s, address=%d)\n", $1, addr);
+	if (curr) 
+	    printf("IDENT (name=%s, address=%d)\n", $1, curr->address);
 	else 
-	    printf("error:%d: undefined: %s\n", yylineno, $1);
+	    printf("error:%d: undefined: %s\n", yylineno,$1);
+	$$ = curr->type;
     }
     | Literal
 ;
@@ -211,22 +309,18 @@ Condition
 ;
 
 Comparator
-    : GTR
-    | LSS
-    | GEQ
-    | LEQ
-    | EQL
-    | NEQ
+    : GTR { $$ = "GTR"; }
+    | LSS { $$ = "LSS"; }
+    | GEQ { $$ = "GEQ"; }
+    | LEQ { $$ = "LEQ"; }
+    | EQL { $$ = "EQL"; }
+    | NEQ { $$ = "NEQ"; }
 ;
 
 PrintStmt
-    : PRINT LPAREN STRING_LIT RPAREN SEMICOLON
-    | PRINT LPAREN STRING_LIT ArgList RPAREN SEMICOLON
-;
-
-ArgList
-    : Value COMMA ArgList
-    | Value
+    : PRINT LPAREN ExpressionStmt RPAREN SEMICOLON { 
+	printf("PRINT %s\n", get_type_name($3));
+    }
 ;
 
 %%
@@ -258,15 +352,15 @@ static void insert_symbol(char *name, kind_t kind, type_t type, type_t eletype, 
     printf("> Insert {%s} into symbol table (scope level: %d)\n", name, curr_scope);
 }
 
-static int lookup_symbol(char *name) 
+static symbol_t *lookup_symbol(char *name) 
 {
     for (int i = 0; i <= curr_scope; i++) {
 	for (int j = 0; j < symbol_num[curr_scope]; j++) {
 	    if (!strcmp(symbol_table[i][j].name, name)) 
-		return symbol_table[i][j].address;
+		return &symbol_table[i][j];
 	}
     }
-    return -1;
+    return NULL;
 }
 
 static void dump_symbol() 
