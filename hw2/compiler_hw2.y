@@ -22,11 +22,11 @@
     }
 
     typedef enum {
-	_INT, _FLOAT, _BOOL, _STRING, _UNDIFINED = -1
+	    _ARRAY, _INT, _FLOAT, _BOOL, _STRING, _UNDIFINED = -1
     } type_t;
 
     typedef enum {
-	_FUNC, _VAR, _LIT
+	    _FUNC, _VAR, _LIT
     } kind_t;
 
     typedef struct {
@@ -102,8 +102,11 @@
 
 %type <st_type> Literal
 %type <st_type> Value
+%type <st_type> Variable
 %type <st_type> ExpressionStmt 
 %type <st_type> ArithmeticStmt
+%type <st_type> AssignmentStmt
+%type <st_type> CompoundStmt
 
 /* Yacc will start at this nonterminal */
 %start Program
@@ -170,6 +173,16 @@ DeclarationStmt
         }
 	    $$ = $1;
     }
+    | Type IDENT LBRACK Literal RBRACK {
+        symbol_t *curr = lookup_symbol($2);
+        if (!curr || curr->scope != curr_scope) {
+            // printf("find declaration id = %s, type = %d\n", $2, $1);
+            insert_symbol($2, _VAR, _ARRAY, $1, yylineno);
+        } else {
+            // TODO: raise syntax error
+        }
+	    $$ = $1;
+    }
     | Type IDENT ASSIGN ExpressionStmt {
         symbol_t *curr = lookup_symbol($2);
         // printf("find declaration id = %s, type = %s\n", $2, $1);
@@ -192,10 +205,22 @@ DeclarationStmt
         }
 	    $$ = $1;
     }
+    | DeclarationStmt COMMA IDENT LBRACK Literal RBRACK {
+        symbol_t *curr = lookup_symbol($3);
+        if (!curr || curr->scope != curr_scope) {
+            // printf("find declaration id = %s, type = %s\n", $2, $1);
+            insert_symbol($3, _VAR, _ARRAY, $1, yylineno);
+        } else {
+            // TODO: raise syntax error
+        }
+	    $$ = $1;
+    }
 ;
 
 ExpressionStmt
     : ArithmeticStmt
+    | AssignmentStmt
+    | CompoundStmt
 ;
 
 ArithmeticStmt
@@ -263,7 +288,26 @@ ArithmeticStmt
     | Value
 ;
 
+AssignmentStmt
+    : Variable ASSIGN ArithmeticStmt { printf("ASSIGN\n"); }
+    | Variable LBRACK ArithmeticStmt RBRACK ASSIGN ArithmeticStmt { printf("ASSIGN\n"); }
+;
+
+CompoundStmt
+    : Variable ADD_ASSIGN ArithmeticStmt { printf("ADD_ASSIGN\n"); }
+    | Variable SUB_ASSIGN ArithmeticStmt { printf("SUB_ASSIGN\n"); }
+    | Variable MUL_ASSIGN ArithmeticStmt { printf("MUL_ASSIGN\n"); }
+    | Variable QUO_ASSIGN ArithmeticStmt { printf("QUO_ASSIGN\n"); }
+    | Variable REM_ASSIGN ArithmeticStmt { printf("REM_ASSIGN\n"); }
+;
+
 Value
+    : Variable
+    | Variable LBRACK ArithmeticStmt RBRACK
+    | Literal
+;
+
+Variable
     : IDENT {
         symbol_t *curr = lookup_symbol($1);
         // printf("address of %s = %d\n", $1, addr);
@@ -271,9 +315,8 @@ Value
             printf("IDENT (name=%s, address=%d)\n", $1, curr->address);
         else 
             printf("error:%d: undefined: %s\n", yylineno,$1);
-        $$ = curr->type;
+        $$ = MAX(curr->type, curr->eletype);
     }
-    | Literal
 ;
 
 Block
@@ -381,13 +424,15 @@ static char *get_type_name(type_t type)
 {
     switch (type) {
     case _INT:
-	    return "int";
+        return "int";
     case _FLOAT:
-	    return "float";
+        return "float";
     case _STRING:
-	    return "string";
+        return "string";
     case _BOOL:
-	    return "bool";
+        return "bool";
+    case _ARRAY:
+        return "array";
     default:
 	    return "-";
     }
