@@ -12,6 +12,13 @@
     #define MAX(a, b) ((a) > (b) ? (a) : (b))
     #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
+    #define SEMANTIC_CHECK(cond, fmt, ...)                    \
+        do {                                                  \
+            if (cond) {                                       \
+                printf("error:%d: " fmt "\n", ##__VA_ARGS__); \
+            }                                                 \
+        } while (0)
+
     extern int yylineno;
     extern int yylex();
     extern FILE *yyin;
@@ -22,7 +29,7 @@
     }
 
     typedef enum {
-	    _ARRAY, _INT, _FLOAT, _BOOL, _STRING, _UNDIFINED = -1
+	    _ARRAY, _BOOL, _INT, _FLOAT, _STRING, _UNDIFINED = -1
     } type_t;
 
     typedef enum {
@@ -166,7 +173,6 @@ DeclarationStmt
     : Type IDENT {
         symbol_t *curr = lookup_symbol($2);
         if (!curr || curr->scope != curr_scope) {
-            // printf("find declaration id = %s, type = %s\n", $2, $1);
             insert_symbol($2, _VAR, $1, _UNDIFINED, yylineno);
         } else {
             // TODO: raise syntax error
@@ -176,7 +182,6 @@ DeclarationStmt
     | Type IDENT LBRACK Literal RBRACK {
         symbol_t *curr = lookup_symbol($2);
         if (!curr || curr->scope != curr_scope) {
-            // printf("find declaration id = %s, type = %d\n", $2, $1);
             insert_symbol($2, _VAR, _ARRAY, $1, yylineno);
         } else {
             // TODO: raise syntax error
@@ -185,7 +190,6 @@ DeclarationStmt
     }
     | Type IDENT ASSIGN ExpressionStmt {
         symbol_t *curr = lookup_symbol($2);
-        // printf("find declaration id = %s, type = %s\n", $2, $1);
         if ($1 != $4) {
             // TODO: type conflict
         } else if (curr && curr->scope == curr_scope) {
@@ -198,7 +202,6 @@ DeclarationStmt
     | DeclarationStmt COMMA IDENT {
         symbol_t *curr = lookup_symbol($3);
         if (!curr || curr->scope != curr_scope) {
-            // printf("find declaration id = %s, type = %s\n", $2, $1);
             insert_symbol($3, _VAR, $1, _UNDIFINED, yylineno);
         } else {
             // TODO: raise syntax error
@@ -208,7 +211,6 @@ DeclarationStmt
     | DeclarationStmt COMMA IDENT LBRACK Literal RBRACK {
         symbol_t *curr = lookup_symbol($3);
         if (!curr || curr->scope != curr_scope) {
-            // printf("find declaration id = %s, type = %s\n", $2, $1);
             insert_symbol($3, _VAR, _ARRAY, $1, yylineno);
         } else {
             // TODO: raise syntax error
@@ -230,30 +232,51 @@ ArithmeticStmt
         $$ = _BOOL;
     }
     | ArithmeticStmt AND ArithmeticStmt {
+        SEMANTIC_CHECK($1 != _BOOL || $3 != _BOOL,
+                 "invalid operation: (operator AND not defined on %s)",
+                 yylineno, get_type_name(MAX($1, $3)));
         printf("AND\n");
         $$ = _BOOL;
     }
     | ArithmeticStmt OR ArithmeticStmt { 
+        SEMANTIC_CHECK($1 != _BOOL || $3 != _BOOL,
+                 "invalid operation: (operator OR not defined on %s)",
+                 yylineno, get_type_name(MAX($1, $3)));
         printf("OR\n");
         $$ = _BOOL;
     }
     | ArithmeticStmt ADD ArithmeticStmt { 
+        SEMANTIC_CHECK($1 != $3,
+                 "invalid operation: ADD (mismatched types %s and %s)",
+                 yylineno, get_type_name($1), get_type_name($3));
         printf("ADD\n");
         $$ = MAX($1, $3);
     }
-    | ArithmeticStmt SUB ArithmeticStmt { 
+    | ArithmeticStmt SUB ArithmeticStmt {
+        SEMANTIC_CHECK($1 != $3,
+                 "invalid operation: SUB (mismatched types %s and %s)",
+                 yylineno, get_type_name($1), get_type_name($3));
         printf("SUB\n");
         $$ = MAX($1, $3);
     }
-    | ArithmeticStmt MUL ArithmeticStmt { 
+    | ArithmeticStmt MUL ArithmeticStmt {
+        SEMANTIC_CHECK($1 != $3,
+                 "invalid operation: MUL (mismatched types %s and %s)",
+                 yylineno, get_type_name($1), get_type_name($3));
         printf("MUL\n");
         $$ = MAX($1, $3);
     }
-    | ArithmeticStmt QUO ArithmeticStmt { 
+    | ArithmeticStmt QUO ArithmeticStmt {
+        SEMANTIC_CHECK($1 != $3,
+                 "invalid operation: QUO (mismatched types %s and %s)",
+                 yylineno, get_type_name($1), get_type_name($3));
         printf("QUO\n");
         $$ = MAX($1, $3);
     }
     | ArithmeticStmt REM ArithmeticStmt { 
+        SEMANTIC_CHECK($1 != _INT || $3 != _INT,
+                 "invalid operation: (operator REM not defined on %s)",
+                 yylineno, get_type_name(MAX($1, $3)));
         printf("REM\n");
         $$ = MAX($1, $3);
     }
@@ -289,8 +312,19 @@ ArithmeticStmt
 ;
 
 AssignmentStmt
-    : Variable ASSIGN ArithmeticStmt { printf("ASSIGN\n"); }
-    | Variable LBRACK ArithmeticStmt RBRACK ASSIGN ArithmeticStmt { printf("ASSIGN\n"); }
+    : Variable ASSIGN ArithmeticStmt { 
+        SEMANTIC_CHECK($1 != $3,
+                 "invalid operation: ASSIGN (mismatched types %s and %s)",
+                 yylineno, get_type_name($1), get_type_name($3));
+        printf("ASSIGN\n");
+    }
+    | Variable LBRACK ArithmeticStmt RBRACK ASSIGN ArithmeticStmt { 
+        SEMANTIC_CHECK($1 != $6,
+                 "invalid operation: ASSIGN (mismatched types %s and %s)",
+                 yylineno, get_type_name($1), get_type_name($6));
+        printf("ASSIGN\n");
+    }
+    
 ;
 
 CompoundStmt
@@ -314,7 +348,6 @@ Value
 Variable
     : IDENT {
         symbol_t *curr = lookup_symbol($1);
-        // printf("address of %s = %d\n", $1, addr);
         if (curr) 
             printf("IDENT (name=%s, address=%d)\n", $1, curr->address);
         else 
@@ -348,7 +381,11 @@ LoopStmt
 ;
 
 Condition
-    : ArithmeticStmt
+    : ArithmeticStmt {
+        SEMANTIC_CHECK($1 != _BOOL,
+                 "non-bool (type %s) used as for condition",
+                 yylineno + 1, get_type_name($1));
+    }
 ;
 
 ForClause
@@ -459,19 +496,6 @@ static char *get_type_name(type_t type)
     default:
 	    return "-";
     }
-}
-
-static type_t get_type_from_name(char *name) 
-{
-    if (!strcmp(name, "int")) 
-	    return _INT;
-    else if (!strcmp(name, "float"))
-	    return _FLOAT;
-    else if (!strcmp(name, "bool"))
-	    return _BOOL;
-    else if (!strcmp(name, "string"))
-	    return _STRING;
-    return _UNDIFINED;
 }
 
 /* C code section */
