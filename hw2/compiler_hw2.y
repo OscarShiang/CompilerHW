@@ -29,7 +29,7 @@
     }
 
     typedef enum {
-	    _ARRAY, _BOOL, _INT, _FLOAT, _STRING, _UNDIFINED = -1
+	    _ARRAY, _BOOL, _INT, _FLOAT, _STRING, _UNDEFINED = -1
     } type_t;
 
     typedef enum {
@@ -104,6 +104,8 @@
 
 /* Nonterminal with return, which need to sepcify type */
 %type <s_val> Comparator
+%type <s_val> CompoundOps
+
 %type <st_type> Type
 %type <st_type> DeclarationStmt
 
@@ -173,9 +175,13 @@ DeclarationStmt
     : Type IDENT {
         symbol_t *curr = lookup_symbol($2);
         if (!curr || curr->scope != curr_scope) {
-            insert_symbol($2, _VAR, $1, _UNDIFINED, yylineno);
+            insert_symbol($2, _VAR, $1, _UNDEFINED, yylineno);
         } else {
             // TODO: raise syntax error
+            // error:4: x redeclared in this block. previous declaration at line 1
+            SEMANTIC_CHECK(true,
+                            "%s redeclared in this block. previous declaration at line %d",
+                            yylineno, $2, curr->lineno);
         }
 	    $$ = $1;
     }
@@ -195,14 +201,14 @@ DeclarationStmt
         } else if (curr && curr->scope == curr_scope) {
             // TODO: duplicated var 
         } else {
-            insert_symbol($2, _VAR, $1, _UNDIFINED, yylineno);
+            insert_symbol($2, _VAR, $1, _UNDEFINED, yylineno);
         }
 	    $$ = $1;
     }
     | DeclarationStmt COMMA IDENT {
         symbol_t *curr = lookup_symbol($3);
         if (!curr || curr->scope != curr_scope) {
-            insert_symbol($3, _VAR, $1, _UNDIFINED, yylineno);
+            insert_symbol($3, _VAR, $1, _UNDEFINED, yylineno);
         } else {
             // TODO: raise syntax error
         }
@@ -313,26 +319,42 @@ ArithmeticStmt
 
 AssignmentStmt
     : Variable ASSIGN ArithmeticStmt { 
-        SEMANTIC_CHECK($1 != $3,
+        SEMANTIC_CHECK(($1 != _UNDEFINED) && ($1 != $3),
                  "invalid operation: ASSIGN (mismatched types %s and %s)",
                  yylineno, get_type_name($1), get_type_name($3));
         printf("ASSIGN\n");
     }
     | Variable LBRACK ArithmeticStmt RBRACK ASSIGN ArithmeticStmt { 
-        SEMANTIC_CHECK($1 != $6,
+        SEMANTIC_CHECK(($1 != _UNDEFINED) && ($1 != $6),
                  "invalid operation: ASSIGN (mismatched types %s and %s)",
                  yylineno, get_type_name($1), get_type_name($6));
         printf("ASSIGN\n");
+    }
+    | Literal ASSIGN ArithmeticStmt {
+        SEMANTIC_CHECK(true, "cannot assign to %s", yylineno, get_type_name($1));
     }
     
 ;
 
 CompoundStmt
-    : Variable ADD_ASSIGN ArithmeticStmt { printf("ADD_ASSIGN\n"); }
-    | Variable SUB_ASSIGN ArithmeticStmt { printf("SUB_ASSIGN\n"); }
-    | Variable MUL_ASSIGN ArithmeticStmt { printf("MUL_ASSIGN\n"); }
-    | Variable QUO_ASSIGN ArithmeticStmt { printf("QUO_ASSIGN\n"); }
-    | Variable REM_ASSIGN ArithmeticStmt { printf("REM_ASSIGN\n"); }
+    : Variable CompoundOps ArithmeticStmt { 
+        SEMANTIC_CHECK(($1 != _UNDEFINED) && ($1 != $3),
+                 "invalid operation: %s (mismatched types %s and %s)",
+                 yylineno, $2, get_type_name($1), get_type_name($3));
+        printf("%s\n", $2);
+    }
+    | Literal CompoundOps ArithmeticStmt {
+        SEMANTIC_CHECK(true, "cannot assign to %s", yylineno, get_type_name($1));
+        printf("%s\n", $2);
+    }
+;
+
+CompoundOps
+    : ADD_ASSIGN { $$ = "ADD_ASSIGN"; }
+    | SUB_ASSIGN { $$ = "SUB_ASSIGN"; }
+    | MUL_ASSIGN { $$ = "MUL_ASSIGN"; }
+    | QUO_ASSIGN { $$ = "QUO_ASSIGN"; }
+    | REM_ASSIGN { $$ = "REM_ASSIGN"; }
 ;
 
 Value
@@ -348,11 +370,13 @@ Value
 Variable
     : IDENT {
         symbol_t *curr = lookup_symbol($1);
-        if (curr) 
+        if (curr && curr->scope <= curr_scope) {
             printf("IDENT (name=%s, address=%d)\n", $1, curr->address);
-        else 
+            $$ = MAX(curr->type, curr->eletype);
+        } else {
             printf("error:%d: undefined: %s\n", yylineno,$1);
-        $$ = MAX(curr->type, curr->eletype);
+            $$ = _UNDEFINED;
+        }
     }
 ;
 
@@ -402,7 +426,7 @@ InitStmt
         } else if (curr && curr->scope == curr_scope) {
             // TODO: duplicated var 
         } else {
-            insert_symbol($2, _VAR, $1, _UNDIFINED, yylineno);
+            insert_symbol($2, _VAR, $1, _UNDEFINED, yylineno);
         }
         curr_scope--;
     }
@@ -431,8 +455,8 @@ static void create_symbol()
         symbol_num[i] = 0;
         for (int j = 0; j < MAX_SYMBOL; j++) {
             symbol_table[i][j].name = NULL;
-            symbol_table[i][j].type = _UNDIFINED;
-            symbol_table[i][j].eletype = _UNDIFINED;
+            symbol_table[i][j].type = _UNDEFINED;
+            symbol_table[i][j].eletype = _UNDEFINED;
             symbol_table[i][j].lineno = -1;
             symbol_table[i][j].scope = -1;
         }
