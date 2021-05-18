@@ -305,6 +305,10 @@ Value
     : Variable
     | Variable LBRACK ArithmeticStmt RBRACK
     | Literal
+    | LPAREN Type RPAREN Value {
+        printf("%c to %c\n", (get_type_name($4)[0] ^ 0x20), (get_type_name($2)[0] ^ 0x20));
+        $$ = $2;
+    }
 ;
 
 Variable
@@ -328,7 +332,7 @@ Block
 
 IfStmt
     : IF LPAREN Condition RPAREN Block
-    | IF LPAREN Condition RPAREN ElseStmt
+    | IF LPAREN Condition RPAREN Block ElseStmt
 ;
 
 ElseStmt
@@ -339,13 +343,32 @@ ElseStmt
 LoopStmt
     : WHILE LPAREN Condition RPAREN Block
     | WHILE LPAREN Condition RPAREN SEMICOLON
-    | FOR LPAREN Condition RPAREN Block
-    | FOR LPAREN Condition RPAREN SEMICOLON
+    | FOR LPAREN ForClause RPAREN Block
+    | FOR LPAREN ForClause RPAREN SEMICOLON
 ;
 
 Condition
-    : ArithmeticStmt Comparator ArithmeticStmt
-    | ArithmeticStmt
+    : ArithmeticStmt
+;
+
+ForClause
+    : InitStmt SEMICOLON Condition SEMICOLON ArithmeticStmt
+;
+
+InitStmt
+    : AssignmentStmt
+    | Type IDENT ASSIGN ArithmeticStmt {
+        curr_scope++;
+        symbol_t *curr = lookup_symbol($2);
+        if ($1 != $4) {
+            // TODO: type conflict
+        } else if (curr && curr->scope == curr_scope) {
+            // TODO: duplicated var 
+        } else {
+            insert_symbol($2, _VAR, $1, _UNDIFINED, yylineno);
+        }
+        curr_scope--;
+    }
 ;
 
 Comparator
@@ -396,7 +419,7 @@ static void insert_symbol(char *name, kind_t kind, type_t type, type_t eletype, 
 
 static symbol_t *lookup_symbol(char *name) 
 {
-    for (int i = 0; i <= curr_scope; i++) {
+    for (int i = curr_scope; i >= 0; i--) {
         for (int j = 0; j < symbol_num[i]; j++) {
             if (!strcmp(symbol_table[i][j].name, name)) 
                 return &symbol_table[i][j];
