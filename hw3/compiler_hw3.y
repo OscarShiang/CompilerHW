@@ -12,9 +12,11 @@
             fprintf(fout, fmt "\n", ##__VA_ARGS__);        \
         } while (0)
 
+    static int label_num = 0;
+
     #define labelgen(fmt, ...)                       \
         do {                                   \
-            fprintf(fout, fmt "\n", ##__VA_ARGS__);        \
+            fprintf(fout, fmt "_%d:\n", label_num++, ##__VA_ARGS__);        \
         } while (0)
 
     extern int yylineno;
@@ -561,6 +563,16 @@ PrintStmt
     : PRINT LPAREN ExpressionStmt RPAREN SEMICOLON {
 	    printf("PRINT %s\n", get_type_name($3));
         
+        if ($3 == _BOOL) {
+            codegen("iconst_1");
+            codegen("ifne BOOL_TRUE_%d", label_num);
+            codegen("ldc \"false\"");
+            codegen("goto PRINT_BOOL_%d", label_num + 1);
+            labelgen("BOOL_TRUE");
+            codegen("ldc \"true\"");
+            labelgen("PRINT_BOOL");
+        }
+
         codegen("getstatic java/lang/System/out Ljava/io/PrintStream;");
         codegen("swap");
         switch ($3) {
@@ -570,11 +582,9 @@ PrintStmt
         case _FLOAT:
             codegen("invokevirtual java/io/PrintStream/print(F)V");
             break;
+        case _BOOL:
         case _STRING:
             codegen("invokevirtual java/io/PrintStream/print(Ljava/lang/String;)V");
-            break;
-        case _BOOL:
-            codegen("invokevirtual java/io/PrintStream/print(I)V");
             break;
         }
     }
