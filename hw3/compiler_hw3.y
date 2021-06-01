@@ -35,6 +35,7 @@
         do {                                                  \
             if (cond) {                                       \
                 printf("error:%d: " fmt "\n", ##__VA_ARGS__); \
+                HAS_ERROR = true;                             \
             }                                                 \
         } while (0)
 
@@ -62,6 +63,7 @@
     
     void yyerror (char const *s)
     {
+        HAS_ERROR = true;
         printf("error:%d: %s\n", yylineno, s);
     }
 
