@@ -5,19 +5,16 @@
     // int yydebug = 1;
 
     #define codegen(fmt, ...)                       \
-        do {                                   \
-            for (int i = 0; i < INDENT; i++) { \
-                fprintf(fout, "\t");           \
-            }                                  \
-            fprintf(fout, fmt "\n", ##__VA_ARGS__);        \
+        do {                                        \
+            for (int i = 0; i < INDENT; i++) {      \
+                fprintf(fout, "\t");                \
+            }                                       \
+            fprintf(fout, fmt "\n", ##__VA_ARGS__); \
         } while (0)
 
-    static int label_num = 0;
+    static int print_label_num = 0;
 
-    #define labelgen(fmt, ...)                       \
-        do {                                   \
-            fprintf(fout, fmt "_%d:\n", label_num++, ##__VA_ARGS__);        \
-        } while (0)
+    #define labelgen(fmt, num) fprintf(fout, fmt "_%d:\n", num)
 
     extern int yylineno;
     extern int yylex();
@@ -39,22 +36,24 @@
             }                                                 \
         } while (0)
 
-    #define codegen_type(type, instr, ...) \
-        switch (type) {             \
-        case _INT:                  \
-        case _BOOL:                 \
-            codegen("i" instr, ##__VA_ARGS__);     \
-            break;                  \
-        case _FLOAT:                \
-            codegen("f" instr, ##__VA_ARGS__);   \
-            break;                  \
-        case _STRING:               \
-        case _ARRAY:               \
-            codegen("a" instr, ##__VA_ARGS__);  \
-            break;                  \
-        default: \
-            (void) 0; \
-        }
+    #define codegen_type(type, instr, ...)         \
+        do {                                       \
+            switch (type) {                        \
+            case _INT:                             \
+            case _BOOL:                            \
+                codegen("i" instr, ##__VA_ARGS__); \
+                break;                             \
+            case _FLOAT:                           \
+                codegen("f" instr, ##__VA_ARGS__); \
+                break;                             \
+            case _STRING:                          \
+            case _ARRAY:                           \
+                codegen("a" instr, ##__VA_ARGS__); \
+                break;                             \
+            default:                               \
+                (void) 0;                          \
+            }                                      \
+        } while (0)
 
     /* Other global variables */
     FILE *fout = NULL;
@@ -143,6 +142,7 @@
 /* Nonterminal with return, which need to sepcify type */
 %type <s_val> Comparator
 %type <s_val> CompoundOps
+%type <s_val> IncAndDec
 
 %type <st_type> Type
 %type <st_type> DeclarationStmt
@@ -179,27 +179,22 @@ Type
 
 Literal
     : INT_LIT {
-        printf("INT_LIT %d\n", $<i_val>$);
 	    codegen("ldc %d", $<i_val>$);
         $$ = _INT;
     }
     | FLOAT_LIT {
-        printf("FLOAT_LIT %f\n", $<f_val>$);
         codegen("ldc %f", $<f_val>$);
 	    $$ = _FLOAT;
     }
     | STRING_LIT {
-        printf("STRING_LIT %s\n", $<s_val>$);
         codegen("ldc \"%s\"", $<s_val>$);
 	    $$ = _STRING;
     }
     | TRUE {
-        printf("TRUE\n");
         codegen("iconst_1");
 	    $$ = _BOOL;
     }
     | FALSE {
-        printf("FALSE\n");
         codegen("iconst_0");
 	    $$ = _BOOL;
     }
@@ -224,7 +219,7 @@ DeclarationStmt
                             "%s redeclared in this block. previous declaration at line %d",
                             yylineno, $2, curr->lineno);
         }
-	    $$ = $1;
+        $$ = $1;
 
         codegen("ldc %s", ($1 == _STRING ? "\"\"" : "0"));
         codegen_type($1, "store %d", curr->address);
@@ -236,7 +231,7 @@ DeclarationStmt
         } else {
             // TODO: raise syntax error
         }
-	    $$ = $1;
+        $$ = $1;
 
         codegen("newarray %s", get_type_name($1));
         codegen_type(_ARRAY, "store %d", curr->address);
@@ -250,7 +245,7 @@ DeclarationStmt
         } else {
             curr = insert_symbol($2, _VAR, $1, _UNDEFINED, yylineno);
         }
-	    $$ = $1;
+        $$ = $1;
 
         codegen_type($1, "store %d", curr->address);
     }
@@ -261,7 +256,7 @@ DeclarationStmt
         } else {
             // TODO: raise syntax error
         }
-	    $$ = $1;
+        $$ = $1;
 
         codegen("ldc %s", ($1 == _STRING ? "\"\"" : "0"));
         codegen_type($1, "store %d", curr->address);
@@ -273,7 +268,7 @@ DeclarationStmt
         } else {
             // TODO: raise syntax error
         }
-	    $$ = $1;
+        $$ = $1;
 
         codegen("newarray %s", get_type_name($1));
         codegen_type(_ARRAY, "store %d", curr->address);
@@ -289,7 +284,6 @@ ExpressionStmt
 ArithmeticStmt
     : LPAREN ArithmeticStmt RPAREN { $$ = $2; }
     | NOT ArithmeticStmt { 
-        printf("NOT\n");
         codegen("iconst_1");
         codegen("ixor");
         $$ = _BOOL;
@@ -298,7 +292,6 @@ ArithmeticStmt
         SEMANTIC_CHECK($1 != _BOOL || $3 != _BOOL,
                  "invalid operation: (operator AND not defined on %s)",
                  yylineno, get_type_name(MAX($1, $3)));
-        printf("AND\n");
         codegen("iand");
         $$ = _BOOL;
     }
@@ -306,7 +299,6 @@ ArithmeticStmt
         SEMANTIC_CHECK($1 != _BOOL || $3 != _BOOL,
                  "invalid operation: (operator OR not defined on %s)",
                  yylineno, get_type_name(MAX($1, $3)));
-        printf("OR\n");
         codegen("ior");
         $$ = _BOOL;
     }
@@ -314,7 +306,6 @@ ArithmeticStmt
         SEMANTIC_CHECK($1 != $3,
                  "invalid operation: ADD (mismatched types %s and %s)",
                  yylineno, get_type_name($1), get_type_name($3));
-        printf("ADD\n");
         codegen_type($1, "add");
         $$ = $1;
     }
@@ -322,7 +313,6 @@ ArithmeticStmt
         SEMANTIC_CHECK($1 != $3,
                  "invalid operation: SUB (mismatched types %s and %s)",
                  yylineno, get_type_name($1), get_type_name($3));
-        printf("SUB\n");
         codegen_type($1, "sub");
         $$ = $1;
     }
@@ -330,7 +320,6 @@ ArithmeticStmt
         SEMANTIC_CHECK($1 != $3,
                  "invalid operation: MUL (mismatched types %s and %s)",
                  yylineno, get_type_name($1), get_type_name($3));
-        printf("MUL\n");
         codegen_type($1, "mul");
         $$ = $1;
     }
@@ -338,7 +327,6 @@ ArithmeticStmt
         SEMANTIC_CHECK($1 != $3,
                  "invalid operation: QUO (mismatched types %s and %s)",
                  yylineno, get_type_name($1), get_type_name($3));
-        printf("QUO\n");
         codegen_type($1, "div");
         $$ = $1;
     }
@@ -346,72 +334,38 @@ ArithmeticStmt
         SEMANTIC_CHECK($1 != _INT || $3 != _INT,
                  "invalid operation: (operator REM not defined on %s)",
                  yylineno, get_type_name(MAX($1, $3)));
-        printf("REM\n");
         codegen("irem");
         $$ = $1;
     }
-    | INC IDENT {
-        printf("INC\n");
+    | IncAndDec IDENT {
         symbol_t *curr = lookup_symbol($2);
         if (curr && curr->scope <= curr_scope) {
             printf("IDENT (name=%s, address=%d)\n", $2, curr->address);
             type_t type = MAX(curr->type, curr->eletype);
             codegen("ldc %s", (type == _INT ? "1" : "1.0"));
             codegen_type(type, "load %d", curr->address);
-            codegen_type(type, "add");
+            if (!strcmp($1, "INC"))
+                codegen_type(type, "add");
+            else
+                codegen_type(type, "sub");
             codegen_type(type, "store %d", curr->address);
-
             $$ = type;
         } else {
             printf("error:%d: undefined: %s\n", yylineno, $2);
             $$ = _UNDEFINED;
         }
     }
-    | DEC IDENT { 
-        printf("DEC\n");
-        symbol_t *curr = lookup_symbol($2);
-        if (curr && curr->scope <= curr_scope) {
-            printf("IDENT (name=%s, address=%d)\n", $2, curr->address);
-            type_t type = MAX(curr->type, curr->eletype);
-            codegen_type(type, "load %d", curr->address);
-            codegen("ldc %s", (type == _INT ? "1" : "1.0"));
-            codegen_type(type, "sub");
-            codegen_type(type, "store %d", curr->address);
-
-            $$ = type;
-        } else {
-            printf("error:%d: undefined: %s\n", yylineno, $2);
-            $$ = _UNDEFINED;
-        }
-    }
-    | IDENT INC { 
-        printf("INC\n");
+    | IDENT IncAndDec { 
         symbol_t *curr = lookup_symbol($1);
         if (curr && curr->scope <= curr_scope) {
-            printf("IDENT (name=%s, address=%d)\n", $1, curr->address);
             type_t type = MAX(curr->type, curr->eletype);
             codegen_type(type, "load %d", curr->address);
             codegen("ldc %s", (type == _INT ? "1" : "1.0"));
-            codegen_type(type, "add");
+            if (!strcmp($2, "INC"))
+                codegen_type(type, "add");
+            else
+                codegen_type(type, "sub");
             codegen_type(type, "store %d", curr->address);
-
-            $$ = type;
-        } else {
-            printf("error:%d: undefined: %s\n", yylineno,$1);
-            $$ = _UNDEFINED;
-        }
-    }
-    | IDENT DEC { 
-        printf("DEC\n");
-        symbol_t *curr = lookup_symbol($1);
-        if (curr && curr->scope <= curr_scope) {
-            printf("IDENT (name=%s, address=%d)\n", $1, curr->address);
-            type_t type = MAX(curr->type, curr->eletype);
-            codegen_type(type, "load %d", curr->address);
-            codegen("ldc %s", (type == _INT ? "1" : "1.0"));
-            codegen_type(type, "sub");
-            codegen_type(type, "store %d", curr->address);
-
             $$ = type;
         } else {
             printf("error:%d: undefined: %s\n", yylineno,$1);
@@ -419,19 +373,20 @@ ArithmeticStmt
         }
     }
     | ArithmeticStmt Comparator ArithmeticStmt %prec ADD {
-        printf("%s\n", $2);
+        
         $$ = _BOOL;
     }
-    | ADD ArithmeticStmt %prec MUL { 
-        printf("POS\n");
-        $$ = $2;
-    }
+    | ADD ArithmeticStmt %prec MUL { $$ = $2; }
     | SUB ArithmeticStmt %prec MUL { 
-        printf("NEG\n");
         codegen_type($2, "neg");
         $$ = $2;
     }
     | Value
+;
+
+IncAndDec
+    : INC { $$ = "INC"; }
+    | DEC { $$ = "DEC"; }
 ;
 
 AssignmentStmt
@@ -439,13 +394,11 @@ AssignmentStmt
         SEMANTIC_CHECK(($1 != _UNDEFINED) && ($1 != $3),
                  "invalid operation: ASSIGN (mismatched types %s and %s)",
                  yylineno, get_type_name($1), get_type_name($3));
-        printf("ASSIGN\n");
     }
     | Variable LBRACK ArithmeticStmt RBRACK ASSIGN ArithmeticStmt { 
         SEMANTIC_CHECK(($1 != _UNDEFINED) && ($1 != $6),
                  "invalid operation: ASSIGN (mismatched types %s and %s)",
                  yylineno, get_type_name($1), get_type_name($6));
-        printf("ASSIGN\n");
     }
     | Literal ASSIGN ArithmeticStmt {
         SEMANTIC_CHECK(true, "cannot assign to %s", yylineno, get_type_name($1));
@@ -458,11 +411,9 @@ CompoundStmt
         SEMANTIC_CHECK(($1 != _UNDEFINED) && ($1 != $3),
                  "invalid operation: %s (mismatched types %s and %s)",
                  yylineno, $2, get_type_name($1), get_type_name($3));
-        printf("%s\n", $2);
     }
     | Literal CompoundOps ArithmeticStmt {
         SEMANTIC_CHECK(true, "cannot assign to %s", yylineno, get_type_name($1));
-        printf("%s\n", $2);
     }
 ;
 
@@ -479,7 +430,6 @@ Value
     | Variable LBRACK ArithmeticStmt RBRACK
     | Literal
     | LPAREN Type RPAREN Value {
-        printf("%c to %c\n", (get_type_name($4)[0] ^ 0x20), (get_type_name($2)[0] ^ 0x20));
         codegen("%c2%c", (get_type_name($4)[0] ^ 0x20), (get_type_name($2)[0] ^ 0x20));
         $$ = $2;
     }
@@ -489,12 +439,11 @@ Variable
     : IDENT {
         symbol_t *curr = lookup_symbol($1);
         if (curr && curr->scope <= curr_scope) {
-            printf("IDENT (name=%s, address=%d)\n", $1, curr->address);
             type_t type = MAX(curr->type, curr->eletype);
             codegen_type(type, "load %d", curr->address);
             $$ = type;
         } else {
-            printf("error:%d: undefined: %s\n", yylineno,$1);
+            SEMANTIC_CHECK(true, "undefined: %s", yylineno, $1);
             $$ = _UNDEFINED;
         }
     }
@@ -502,7 +451,6 @@ Variable
 
 Block
     : LBRACE StatementList RBRACE {
-        dump_symbol(curr_scope + 1);
         symbol_num[curr_scope + 1] = 0;
     }
 ;
@@ -563,16 +511,14 @@ Comparator
 
 PrintStmt
     : PRINT LPAREN ExpressionStmt RPAREN SEMICOLON {
-	    printf("PRINT %s\n", get_type_name($3));
-        
         if ($3 == _BOOL) {
             codegen("iconst_1");
-            codegen("ifne BOOL_TRUE_%d", label_num);
+            codegen("ifne PRINT_BOOL_TRUE_%d", print_label_num);
             codegen("ldc \"false\"");
-            codegen("goto PRINT_BOOL_%d", label_num + 1);
-            labelgen("BOOL_TRUE");
+            codegen("goto PRINT_BEGIN_%d", print_label_num + 1);
+            labelgen("PRINT_BOOL_TRUE", print_label_num++);
             codegen("ldc \"true\"");
-            labelgen("PRINT_BOOL");
+            labelgen("PRINT_BEGIN", print_label_num++);
         }
 
         codegen("getstatic java/lang/System/out Ljava/io/PrintStream;");
@@ -620,7 +566,6 @@ static symbol_t *insert_symbol(char *name, kind_t kind, type_t type, type_t elet
         .address = address++,
     };
     symbol_table[curr_scope][symbol_num[curr_scope]] = new_symbol;
-    printf("> Insert {%s} into symbol table (scope level: %d)\n", name, curr_scope);
     return &symbol_table[curr_scope][symbol_num[curr_scope]++];
 }
 
@@ -639,7 +584,7 @@ static void dump_symbol(int level)
 {
     printf("> Dump symbol table (scope level: %d)\n", level);
     printf("%-10s%-10s%-10s%-10s%-10s%s\n", "Index", "Name", "Type", "Address", "Lineno",
-	"Element type");
+            "Element type");
     for (int i = 0; i < symbol_num[level]; i++) {
         symbol_t *curr = &symbol_table[level][i];
         printf("%-10d%-10s%-10s%-10d%-10d%s\n",
@@ -664,7 +609,7 @@ static char *get_type_name(type_t type)
     case _ARRAY:
         return "array";
     default:
-	    return "-";
+        return "-";
     }
 }
 
@@ -692,7 +637,7 @@ int main(int argc, char *argv[])
 
     yyparse();
 
-	printf("Total lines: %d\n", yylineno);
+    printf("Total lines: %d\n", yylineno);
 
     /* Codegen end */
     codegen("return");
