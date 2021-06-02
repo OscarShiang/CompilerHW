@@ -6,7 +6,6 @@
 
     static int print_label_num = 0;
     static int cmp_label_num = 0;
-    static int loop_label_num = 0;
 
     #define labelgen(fmt, num) fprintf(fout, fmt "_%d:\n", num)
 
@@ -116,12 +115,21 @@
 
     static char *get_assignop_name(char *op);
 
-    static int label_stack_idx = -1;
-    static int loop_label_stack[MAX_SCOPE];
+    #define declare_label_stack(name)                                   \
+        static int name##_label_num = 0;                                \
+        static int name##_stack_idx = -1;                               \
+        static int name##_label_stack[MAX_SCOPE];                       \
+        static inline void push_##name##_label(int label)               \
+        {                                                               \
+            name##_label_stack[++name##_stack_idx] = label;             \
+        }                                                               \
+        static inline void pop_##name##_label() { --name##_stack_idx; } \
+        static inline int get_##name##_label()                          \
+        {                                                               \
+            return name##_label_stack[name##_stack_idx];                \
+        }
 
-    static inline void push_loop_label(int label) { loop_label_stack[++label_stack_idx] = label; }
-    static inline void pop_loop_label() { --label_stack_idx; }
-    static inline int get_loop_label() { return loop_label_stack[label_stack_idx]; }
+    declare_label_stack(loop);
 %}
 
 %error-verbose
@@ -515,8 +523,16 @@ LoopStmt
         labelgen("LOOP_END", get_loop_label());
         pop_loop_label();
     }
-    | FOR LPAREN ForClause RPAREN Block
-    | FOR LPAREN ForClause RPAREN SEMICOLON
+    | FOR LPAREN ForClause RPAREN Block {
+        codegen("goto LOOP_POST_%d", get_loop_label());
+        labelgen("LOOP_END", get_loop_label());
+        pop_loop_label();
+    }
+    | FOR LPAREN ForClause RPAREN SEMICOLON {
+        codegen("goto LOOP_POST_%d", get_loop_label());
+        labelgen("LOOP_END", get_loop_label());
+        pop_loop_label();
+    }
 ;
 
 While 
@@ -537,12 +553,11 @@ Condition
 ;
 
 ForClause
-    : InitStmt SEMICOLON Condition SEMICOLON ArithmeticStmt
+    : InitStmt SEMICOLON ForCondition SEMICOLON PostStmt
 ;
 
 InitStmt
-    : AssignmentStmt
-    | Type IDENT ASSIGN ArithmeticStmt {
+    : Type IDENT ASSIGN ArithmeticStmt {
         curr_scope++;
         symbol_t *curr = lookup_symbol($2);
         if ($1 != $4) {
@@ -553,6 +568,34 @@ InitStmt
             insert_symbol($2, _VAR, $1, _UNDEFINED, yylineno);
         }
         curr_scope--;
+    }
+    | IDENT ASSIGN ArithmeticStmt {
+        symbol_t *curr = lookup_symbol($1);
+        if (curr && curr->scope <= curr_scope) {
+            type_t type = MAX(curr->type, curr->eletype);
+            SEMANTIC_CHECK((curr->type != _UNDEFINED) && (curr->type != $3),
+                 "invalid operation: ASSIGN (mismatched types %s and %s)",
+                 yylineno, get_type_name(type), get_type_name($3));
+            codegen_type(type, "store %d", curr->address);
+            push_loop_label(loop_label_num++);
+            labelgen("LOOP_BEGIN", get_loop_label());
+        } else {
+            SEMANTIC_CHECK(true, "undefined: %s", yylineno, $1);
+        }
+    }
+;
+
+ForCondition
+    : Condition {
+        codegen("goto LOOP_BODY_%d", get_loop_label());
+        labelgen("LOOP_POST", get_loop_label());
+    }
+;
+
+PostStmt
+    : ArithmeticStmt {
+        codegen("goto LOOP_BEGIN_%d", get_loop_label());
+        labelgen("LOOP_BODY", get_loop_label());
     }
 ;
 
