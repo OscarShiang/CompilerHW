@@ -9,6 +9,5 @@ y.tab.h
 
 # Jasmin assembler
 hw3.j
-jasmin.jar
 Main.class
 *.log
