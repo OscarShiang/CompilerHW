@@ -130,6 +130,7 @@
         }
 
     declare_label_stack(loop);
+    declare_label_stack(if);
 %}
 
 %error-verbose
@@ -503,22 +504,39 @@ Block
 ;
 
 IfStmt
-    : IF LPAREN Condition RPAREN Block
-    | IF LPAREN Condition RPAREN Block ElseStmt
+    : IF LPAREN Condition RPAREN IfBlock ElseStmt {
+        labelgen("IF_END", get_if_label());
+        pop_if_label();
+    }
 ;
 
 ElseStmt
     : ELSE IfStmt
     | ELSE Block
+    |
+;
+
+IfBlock:
+    Block {
+        codegen("goto IF_END_%d", get_if_label());
+        labelgen("IF_ELSE", get_if_label());
+    }
+;
+
+Condition
+    : ArithmeticStmt {
+        push_if_label(if_label_num++);
+        codegen("ifeq IF_ELSE_%d", get_if_label());
+    }
 ;
 
 LoopStmt
-    : While LPAREN Condition RPAREN Block {
+    : While LPAREN LoopCondition RPAREN Block {
         codegen("goto LOOP_BEGIN_%d", get_loop_label());
         labelgen("LOOP_END", get_loop_label());
         pop_loop_label();
     }
-    | While LPAREN Condition RPAREN SEMICOLON {
+    | While LPAREN LoopCondition RPAREN SEMICOLON {
         codegen("goto LOOP_BEGIN_%d", get_loop_label());
         labelgen("LOOP_END", get_loop_label());
         pop_loop_label();
@@ -542,7 +560,7 @@ While
     }
 ;
 
-Condition
+LoopCondition
     : ArithmeticStmt {
         SEMANTIC_CHECK($1 != _BOOL,
                  "non-bool (type %s) used as for condition",
@@ -586,7 +604,7 @@ InitStmt
 ;
 
 ForCondition
-    : Condition {
+    : LoopCondition {
         codegen("goto LOOP_BODY_%d", get_loop_label());
         labelgen("LOOP_POST", get_loop_label());
     }
