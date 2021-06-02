@@ -6,6 +6,7 @@
 
     static int print_label_num = 0;
     static int cmp_label_num = 0;
+    static int loop_label_num = 0;
 
     #define labelgen(fmt, num) fprintf(fout, fmt "_%d:\n", num)
 
@@ -112,6 +113,13 @@
     static symbol_t *insert_symbol(char *name, kind_t kind, type_t type, type_t eletype, int lineno);
     static symbol_t *lookup_symbol(char *name);
     static void dump_symbol(int level);
+
+    static int label_stack_idx = -1;
+    static int loop_label_stack[MAX_SCOPE];
+
+    static inline void push_loop_label(int label) { loop_label_stack[++label_stack_idx] = label; }
+    static inline void pop_loop_label() { --label_stack_idx; }
+    static inline int get_loop_label() { return loop_label_stack[label_stack_idx]; }
 %}
 
 %error-verbose
@@ -236,7 +244,7 @@ DeclarationStmt
         }
         $$ = $1;
 
-        codegen("ldc %s", ($1 == _STRING ? "\"\"" : "0"));
+        codegen("ldc %s", ($1 == _STRING ? "\"\"" : $1 == _INT ? "0" : "0.0"));
         codegen_type($1, "store %d", curr->address);
     }
     | Type IDENT LBRACK Literal RBRACK {
@@ -273,7 +281,7 @@ DeclarationStmt
         }
         $$ = $1;
 
-        codegen("ldc %s", ($1 == _STRING ? "\"\"" : "0"));
+        codegen("ldc %s", ($1 == _STRING ? "\"\"" : $1 == _INT ? "0" : "0.0"));
         codegen_type($1, "store %d", curr->address);
     }
     | DeclarationStmt COMMA IDENT LBRACK Literal RBRACK {
@@ -357,12 +365,9 @@ ArithmeticStmt
         if (curr && curr->scope <= curr_scope) {
             printf("IDENT (name=%s, address=%d)\n", $2, curr->address);
             type_t type = MAX(curr->type, curr->eletype);
-            codegen("ldc %s", (type == _INT ? "1" : "1.0"));
+            codegen_type(type, "const_1");
             codegen_type(type, "load %d", curr->address);
-            if (!strcmp($1, "INC"))
-                codegen_type(type, "add");
-            else
-                codegen_type(type, "sub");
+            codegen_type(type, "%s", $2);
             codegen_type(type, "store %d", curr->address);
             $$ = type;
         } else {
@@ -375,11 +380,8 @@ ArithmeticStmt
         if (curr && curr->scope <= curr_scope) {
             type_t type = MAX(curr->type, curr->eletype);
             codegen_type(type, "load %d", curr->address);
-            codegen("ldc %s", (type == _INT ? "1" : "1.0"));
-            if (!strcmp($2, "INC"))
-                codegen_type(type, "add");
-            else
-                codegen_type(type, "sub");
+            codegen_type(type, "const_1");
+            codegen_type(type, "%s", $2);
             codegen_type(type, "store %d", curr->address);
             $$ = type;
         } else {
@@ -400,15 +402,24 @@ ArithmeticStmt
 ;
 
 IncAndDec
-    : INC { $$ = "INC"; }
-    | DEC { $$ = "DEC"; }
+    : INC { $$ = "add"; }
+    | DEC { $$ = "sub"; }
 ;
 
 AssignmentStmt
-    : Variable ASSIGN ArithmeticStmt { 
-        SEMANTIC_CHECK(($1 != _UNDEFINED) && ($1 != $3),
+    : IDENT ASSIGN ArithmeticStmt {
+        symbol_t *curr = lookup_symbol($1);
+        if (curr && curr->scope <= curr_scope) {
+            type_t type = MAX(curr->type, curr->eletype);
+            SEMANTIC_CHECK((curr->type != _UNDEFINED) && (curr->type != $3),
                  "invalid operation: ASSIGN (mismatched types %s and %s)",
-                 yylineno, get_type_name($1), get_type_name($3));
+                 yylineno, get_type_name(type), get_type_name($3));
+            codegen_type(type, "store %d", curr->address);
+            $$ = type;
+        } else {
+            SEMANTIC_CHECK(true, "undefined: %s", yylineno, $1);
+            $$ = _UNDEFINED;
+        }
     }
     | Variable LBRACK ArithmeticStmt RBRACK ASSIGN ArithmeticStmt { 
         SEMANTIC_CHECK(($1 != _UNDEFINED) && ($1 != $6),
@@ -481,10 +492,25 @@ ElseStmt
 ;
 
 LoopStmt
-    : WHILE LPAREN Condition RPAREN Block
-    | WHILE LPAREN Condition RPAREN SEMICOLON
+    : While LPAREN Condition RPAREN Block {
+        codegen("goto LOOP_BEGIN_%d", get_loop_label());
+        labelgen("LOOP_END", get_loop_label());
+        pop_loop_label();
+    }
+    | While LPAREN Condition RPAREN SEMICOLON {
+        codegen("goto LOOP_BEGIN_%d", get_loop_label());
+        labelgen("LOOP_END", get_loop_label());
+        pop_loop_label();
+    }
     | FOR LPAREN ForClause RPAREN Block
     | FOR LPAREN ForClause RPAREN SEMICOLON
+;
+
+While 
+    : WHILE {
+        push_loop_label(loop_label_num++);
+        labelgen("LOOP_BEGIN", get_loop_label());
+    }
 ;
 
 Condition
@@ -492,6 +518,8 @@ Condition
         SEMANTIC_CHECK($1 != _BOOL,
                  "non-bool (type %s) used as for condition",
                  yylineno + 1, get_type_name($1));
+
+        codegen("ifeq LOOP_END_%d", get_loop_label());
     }
 ;
 
@@ -527,7 +555,6 @@ Comparator
 PrintStmt
     : PRINT LPAREN ExpressionStmt RPAREN SEMICOLON {
         if ($3 == _BOOL) {
-            codegen("iconst_1");
             codegen("ifne PRINT_BOOL_TRUE_%d", print_label_num);
             codegen("ldc \"false\"");
             codegen("goto PRINT_BEGIN_%d", print_label_num);
