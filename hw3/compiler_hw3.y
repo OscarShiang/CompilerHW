@@ -4,15 +4,8 @@
     // #define YYDEBUG 1
     // int yydebug = 1;
 
-    #define codegen(fmt, ...)                       \
-        do {                                        \
-            for (int i = 0; i < INDENT; i++) {      \
-                fprintf(fout, "\t");                \
-            }                                       \
-            fprintf(fout, fmt "\n", ##__VA_ARGS__); \
-        } while (0)
-
     static int print_label_num = 0;
+    static int cmp_label_num = 0;
 
     #define labelgen(fmt, num) fprintf(fout, fmt "_%d:\n", num)
 
@@ -36,6 +29,14 @@
             }                                                 \
         } while (0)
 
+    #define codegen(fmt, ...)                       \
+        do {                                        \
+            for (int i = 0; i < INDENT; i++) {      \
+                fprintf(fout, "\t");                \
+            }                                       \
+            fprintf(fout, fmt "\n", ##__VA_ARGS__); \
+        } while (0)
+
     #define codegen_type(type, instr, ...)         \
         do {                                       \
             switch (type) {                        \
@@ -53,6 +54,20 @@
             default:                               \
                 (void) 0;                          \
             }                                      \
+        } while (0)
+
+    #define codegen_cmp(type, instr)                         \
+        do {                                                 \
+            if (type == _INT)                                \
+                codegen_type(type, "sub");                   \
+            else                                             \
+                codegen("fcmpl");                            \
+            codegen("%s CMP_TRUE_%d", instr, cmp_label_num); \
+            codegen("iconst_0");                             \
+            codegen("goto CMP_END_%d", cmp_label_num);       \
+            labelgen("CMP_TRUE", cmp_label_num);             \
+            codegen("iconst_1");                             \
+            labelgen("CMP_END", cmp_label_num++);            \
         } while (0)
 
     /* Other global variables */
@@ -373,7 +388,7 @@ ArithmeticStmt
         }
     }
     | ArithmeticStmt Comparator ArithmeticStmt %prec ADD {
-        
+        codegen_cmp($1, $2);
         $$ = _BOOL;
     }
     | ADD ArithmeticStmt %prec MUL { $$ = $2; }
@@ -501,12 +516,12 @@ InitStmt
 ;
 
 Comparator
-    : GTR { $$ = "GTR"; }
-    | LSS { $$ = "LSS"; }
-    | GEQ { $$ = "GEQ"; }
-    | LEQ { $$ = "LEQ"; }
-    | EQL { $$ = "EQL"; }
-    | NEQ { $$ = "NEQ"; }
+    : GTR { $$ = "ifgt"; }
+    | LSS { $$ = "iflt"; }
+    | GEQ { $$ = "ifge"; }
+    | LEQ { $$ = "ifle"; }
+    | EQL { $$ = "ifeq"; }
+    | NEQ { $$ = "ifne"; }
 ;
 
 PrintStmt
@@ -515,8 +530,8 @@ PrintStmt
             codegen("iconst_1");
             codegen("ifne PRINT_BOOL_TRUE_%d", print_label_num);
             codegen("ldc \"false\"");
-            codegen("goto PRINT_BEGIN_%d", print_label_num + 1);
-            labelgen("PRINT_BOOL_TRUE", print_label_num++);
+            codegen("goto PRINT_BEGIN_%d", print_label_num);
+            labelgen("PRINT_BOOL_TRUE", print_label_num);
             codegen("ldc \"true\"");
             labelgen("PRINT_BEGIN", print_label_num++);
         }
