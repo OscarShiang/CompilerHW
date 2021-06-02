@@ -114,6 +114,8 @@
     static symbol_t *lookup_symbol(char *name);
     static void dump_symbol(int level);
 
+    static char *get_assignop_name(char *op);
+
     static int label_stack_idx = -1;
     static int loop_label_stack[MAX_SCOPE];
 
@@ -425,6 +427,7 @@ AssignmentStmt
         SEMANTIC_CHECK(($1 != _UNDEFINED) && ($1 != $6),
                  "invalid operation: ASSIGN (mismatched types %s and %s)",
                  yylineno, get_type_name($1), get_type_name($6));
+        codegen_type($1, "astore");
     }
     | Literal ASSIGN ArithmeticStmt {
         SEMANTIC_CHECK(true, "cannot assign to %s", yylineno, get_type_name($1));
@@ -433,10 +436,21 @@ AssignmentStmt
 ;
 
 CompoundStmt
-    : Variable CompoundOps ArithmeticStmt { 
-        SEMANTIC_CHECK(($1 != _UNDEFINED) && ($1 != $3),
+    : IDENT CompoundOps ArithmeticStmt {
+        symbol_t *curr = lookup_symbol($1);
+        if (curr && curr->scope <= curr_scope) {
+            SEMANTIC_CHECK((curr->type != _UNDEFINED) && (curr->type != $3),
                  "invalid operation: %s (mismatched types %s and %s)",
-                 yylineno, $2, get_type_name($1), get_type_name($3));
+                 yylineno, get_assignop_name($2), get_type_name(curr->type), get_type_name($3));
+            codegen_type(curr->type, "load %d", curr->address);
+            codegen("swap");
+            codegen_type(curr->type, "%s", $2);
+            codegen_type(curr->type, "store %d", curr->address);
+            $$ = curr->type;
+        } else {
+            SEMANTIC_CHECK(true, "undefined: %s", yylineno, $1);
+            $$ = _UNDEFINED;
+        }
     }
     | Literal CompoundOps ArithmeticStmt {
         SEMANTIC_CHECK(true, "cannot assign to %s", yylineno, get_type_name($1));
@@ -444,19 +458,19 @@ CompoundStmt
 ;
 
 CompoundOps
-    : ADD_ASSIGN { $$ = "ADD_ASSIGN"; }
-    | SUB_ASSIGN { $$ = "SUB_ASSIGN"; }
-    | MUL_ASSIGN { $$ = "MUL_ASSIGN"; }
-    | QUO_ASSIGN { $$ = "QUO_ASSIGN"; }
-    | REM_ASSIGN { $$ = "REM_ASSIGN"; }
+    : ADD_ASSIGN { $$ = "add"; }
+    | SUB_ASSIGN { $$ = "sub"; }
+    | MUL_ASSIGN { $$ = "mul"; }
+    | QUO_ASSIGN { $$ = "div"; }
+    | REM_ASSIGN { $$ = "rem"; }
 ;
 
 Value
-    : Variable
-    | Variable LBRACK ArithmeticStmt RBRACK
+    : Variable 
+    | Variable LBRACK ArithmeticStmt RBRACK { codegen_type($1, "aload"); }
     | Literal
     | LPAREN Type RPAREN Value {
-        codegen("%c2%c", (get_type_name($4)[0] ^ 0x20), (get_type_name($2)[0] ^ 0x20));
+        codegen("%c2%c", get_type_name($4)[0], get_type_name($2)[0]);
         $$ = $2;
     }
 ;
@@ -465,9 +479,8 @@ Variable
     : IDENT {
         symbol_t *curr = lookup_symbol($1);
         if (curr && curr->scope <= curr_scope) {
-            type_t type = MAX(curr->type, curr->eletype);
-            codegen_type(type, "load %d", curr->address);
-            $$ = type;
+            codegen_type(curr->type, "load %d", curr->address);
+            $$ = MAX(curr->type, curr->eletype);
         } else {
             SEMANTIC_CHECK(true, "undefined: %s", yylineno, $1);
             $$ = _UNDEFINED;
@@ -653,6 +666,22 @@ static char *get_type_name(type_t type)
     default:
         return "-";
     }
+}
+
+static char *get_assignop_name(char *op)
+{
+    if (!strcmp(op, "add"))
+        return "ADD_ASSGIGN";
+    else if (!strcmp(op, "sub"))
+        return "SUB_ASSGIGN";
+    else if (!strcmp(op, "mul"))
+        return "MUL_ASSGIGN";
+    else if (!strcmp(op, "div"))
+        return "QUO_ASSGIGN";
+    else if (!strcmp(op, "rem"))
+        return "REM_ASSGIGN";
+    else 
+        return "";
 }
 
 /* C code section */
