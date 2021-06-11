@@ -111,7 +111,6 @@
     static void create_symbol();
     static symbol_t *insert_symbol(char *name, kind_t kind, type_t type, type_t eletype, int lineno);
     static symbol_t *lookup_symbol(char *name);
-    static void dump_symbol(int level);
 
     static char *get_assignop_name(char *op);
 
@@ -696,21 +695,6 @@ static symbol_t *lookup_symbol(char *name)
     return NULL;
 }
 
-static void dump_symbol(int level) 
-{
-    printf("> Dump symbol table (scope level: %d)\n", level);
-    printf("%-10s%-10s%-10s%-10s%-10s%s\n", "Index", "Name", "Type", "Address", "Lineno",
-            "Element type");
-    for (int i = 0; i < symbol_num[level]; i++) {
-        symbol_t *curr = &symbol_table[level][i];
-        printf("%-10d%-10s%-10s%-10d%-10d%s\n",
-            i, curr->name,
-            get_type_name(curr->type),
-            curr->address, curr->lineno,
-            get_type_name(curr->eletype));
-    }
-}
-
 static char *get_type_name(type_t type) 
 {
     switch (type) {
@@ -768,8 +752,6 @@ int main(int argc, char *argv[])
     INDENT++;
 
     yyparse();
-
-    printf("Total lines: %d\n", yylineno);
 
     /* Codegen end */
     codegen("return");
